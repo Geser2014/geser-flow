@@ -7,7 +7,7 @@ import os
 from datetime import datetime, timedelta
 
 import customtkinter as ctk
-from db import get_stats_range, get_daily_totals, get_projects, get_all_projects_with_totals
+from db import get_stats_range, get_daily_totals, get_projects, get_projects_with_stages_stats
 
 _ICON_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets", "icon.ico")
 
@@ -39,9 +39,7 @@ class DashboardWindow(ctk.CTkToplevel):
         if os.path.exists(_ICON_PATH):
             self.after(300, lambda: self.iconbitmap(_ICON_PATH))
 
-        self._sort_col = None
-        self._sort_reverse = False
-        self._sessions_data: list[dict] = []
+        self._expanded: set[str] = set()
 
         self._build_ui()
         self._apply_period("today")
@@ -139,26 +137,23 @@ class DashboardWindow(ctk.CTkToplevel):
         self._table_frame.pack(fill="both", expand=True, padx=15, pady=6)
 
         # Заголовок таблицы
-        self._columns = ["Дата", "Проект", "Начало", "Конец", "Работа", "Паузы", "Перекуры"]
-        self._col_keys = [
-            "date", "project_name", "start_time", "end_time",
-            "work_seconds", "pause_seconds", "break_seconds",
-        ]
+        self._columns = ["Проект", "Работа", "Паузы", "Перекуры", "Сессий"]
+        col_widths = [160, 75, 65, 65, 50]
 
         header_row = ctk.CTkFrame(self._table_frame, fg_color=HEADER_BG, height=30)
         header_row.pack(fill="x", pady=(0, 2))
         header_row.pack_propagate(False)
 
-        col_widths = [85, 130, 65, 65, 75, 65, 65]
+        # Spacer for expand button
+        ctk.CTkLabel(header_row, text="", width=30).pack(side="left", padx=1)
+
         for i, col_name in enumerate(self._columns):
-            btn = ctk.CTkButton(
+            ctk.CTkLabel(
                 header_row, text=col_name, width=col_widths[i], height=28,
-                fg_color="transparent", hover_color="#333333",
+                fg_color="transparent",
                 text_color=MUTED, font=("Segoe UI", 11, "bold"),
                 anchor="w",
-                command=lambda k=self._col_keys[i]: self._sort_by(k),
-            )
-            btn.pack(side="left", padx=1)
+            ).pack(side="left", padx=1)
 
         self._rows_container = ctk.CTkFrame(self._table_frame, fg_color="transparent")
         self._rows_container.pack(fill="both", expand=True)
@@ -216,32 +211,18 @@ class DashboardWindow(ctk.CTkToplevel):
         self._refresh()
 
     def _refresh(self):
-        """Обновляет таблицу и итоги."""
-        d_from = self._date_from_var.get()
-        d_to = self._date_to_var.get()
-        project = self._project_var.get()
-        proj_filter = None if project == "Все проекты" else project
-
-        self._sessions_data = get_stats_range(d_from, d_to, proj_filter)
-
-        # Обновляем выпадающий список проектов
         project_list = ["Все проекты"] + get_projects()
         self._project_menu.configure(values=project_list)
-
         self._update_summary_cards()
         self._render_table()
 
-    def _sort_by(self, key: str):
-        """Сортирует данные по колонке."""
-        if self._sort_col == key:
-            self._sort_reverse = not self._sort_reverse
+    def _toggle_expand(self, project_name: str):
+        if not hasattr(self, "_expanded"):
+            self._expanded = set()
+        if project_name in self._expanded:
+            self._expanded.discard(project_name)
         else:
-            self._sort_col = key
-            self._sort_reverse = False
-
-        self._sessions_data.sort(
-            key=lambda r: r.get(key, "") or "", reverse=self._sort_reverse
-        )
+            self._expanded.add(project_name)
         self._render_table()
 
     def _render_table(self):
@@ -249,48 +230,95 @@ class DashboardWindow(ctk.CTkToplevel):
         for w in self._rows_container.winfo_children():
             w.destroy()
 
-        col_widths = [85, 130, 65, 65, 75, 65, 65]
-        total_work = 0
-        total_pause = 0
+        d_from = self._date_from_var.get()
+        d_to = self._date_to_var.get()
+        project_filter = self._project_var.get()
 
-        for idx, row_data in enumerate(self._sessions_data):
+        projects_data = get_projects_with_stages_stats(d_from, d_to)
+
+        if project_filter != "Все проекты":
+            projects_data = [p for p in projects_data if p["project_name"] == project_filter]
+
+        col_widths = [160, 75, 65, 65, 50]
+        total_work = 0
+        total_sessions = 0
+
+        for idx, proj in enumerate(projects_data):
+            project_name = proj["project_name"]
+            is_expanded = project_name in self._expanded
+            expand_symbol = "▲" if is_expanded else "▼"
+
             bg = BG_ROW_ALT if idx % 2 == 0 else BG_MAIN
             row_frame = ctk.CTkFrame(self._rows_container, fg_color=bg, height=28)
             row_frame.pack(fill="x", pady=0)
             row_frame.pack_propagate(False)
 
-            # Форматируем значения
-            start = row_data.get("start_time", "")
-            end = row_data.get("end_time", "") or ""
-            date_str = start[:10] if start else ""
-            start_short = start[11:16] if len(start) >= 16 else ""
-            end_short = end[11:16] if len(end) >= 16 else ""
+            # Expand button
+            expand_btn = ctk.CTkButton(
+                row_frame, text=expand_symbol, width=30, height=26,
+                fg_color="transparent", hover_color="#333333",
+                text_color=MUTED, font=("Segoe UI", 10),
+                command=lambda pn=project_name: self._toggle_expand(pn),
+            )
+            expand_btn.pack(side="left", padx=1)
 
-            work_s = row_data.get("work_seconds", 0)
-            pause_s = row_data.get("pause_seconds", 0)
-            break_s = row_data.get("break_seconds", 0)
+            work_s = proj.get("work_seconds", 0)
+            pause_s = proj.get("pause_seconds", 0)
+            break_s = proj.get("break_seconds", 0)
+            session_count = proj.get("session_count", 0)
             total_work += work_s
-            total_pause += pause_s
+            total_sessions += session_count
 
             values = [
-                date_str,
-                row_data.get("project_name", ""),
-                start_short,
-                end_short,
+                project_name,
                 _fmt_hm(work_s),
                 _fmt_hm(pause_s),
                 _fmt_hm(break_s),
+                str(session_count),
+            ]
+            fonts = [
+                ("Segoe UI", 11, "bold"),
+                ("Segoe UI", 11),
+                ("Segoe UI", 11),
+                ("Segoe UI", 11),
+                ("Segoe UI", 11),
             ]
 
             for i, val in enumerate(values):
                 ctk.CTkLabel(
                     row_frame, text=val, width=col_widths[i],
-                    font=("Segoe UI", 11), text_color=TEXT, anchor="w",
+                    font=fonts[i], text_color=TEXT, anchor="w",
                 ).pack(side="left", padx=1)
 
-        count = len(self._sessions_data)
+            # Bind double-click for expand/collapse
+            row_frame.bind("<Double-Button-1>", lambda e, pn=project_name: self._toggle_expand(pn))
+
+            # Sub-rows for stages if expanded
+            if is_expanded:
+                for stage in proj.get("stages", []):
+                    stage_frame = ctk.CTkFrame(self._rows_container, fg_color="#1e221e", height=26)
+                    stage_frame.pack(fill="x", pady=0)
+                    stage_frame.pack_propagate(False)
+
+                    # Spacer for expand button column
+                    ctk.CTkLabel(stage_frame, text="", width=30).pack(side="left", padx=1)
+
+                    stage_values = [
+                        "  " + stage.get("stage_name", ""),
+                        _fmt_hm(stage.get("work_seconds", 0)),
+                        _fmt_hm(stage.get("pause_seconds", 0)),
+                        _fmt_hm(stage.get("break_seconds", 0)),
+                        str(stage.get("session_count", 0)),
+                    ]
+
+                    for i, val in enumerate(stage_values):
+                        ctk.CTkLabel(
+                            stage_frame, text=val, width=col_widths[i],
+                            font=("Segoe UI", 11), text_color=MUTED, anchor="w",
+                        ).pack(side="left", padx=1)
+
         self._lbl_totals.configure(
-            text=f"Сессий: {count}  |  Рабочих часов: {_fmt_hm(total_work)}  |  Пауз: {_fmt_hm(total_pause)}"
+            text=f"Проектов: {len(projects_data)}  |  Рабочих часов: {_fmt_hm(total_work)}  |  Сессий: {total_sessions}"
         )
 
     def _export_csv(self):
@@ -299,14 +327,22 @@ class DashboardWindow(ctk.CTkToplevel):
         filename = f"geserflow_export_{datetime.now().strftime('%Y-%m-%d')}.csv"
         filepath = os.path.join(downloads, filename)
 
+        d_from = self._date_from_var.get()
+        d_to = self._date_to_var.get()
+        project_filter = self._project_var.get()
+        proj_filter = None if project_filter == "Все проекты" else project_filter
+
+        sessions = get_stats_range(d_from, d_to, proj_filter)
+
         try:
             with open(filepath, "w", newline="", encoding="utf-8-sig") as f:
                 writer = csv.writer(f)
-                writer.writerow(["Дата", "Проект", "Начало", "Конец", "Работа (сек)", "Паузы (сек)", "Перекуры (сек)"])
-                for row in self._sessions_data:
+                writer.writerow(["Дата", "Проект", "Этап", "Начало", "Конец", "Работа (сек)", "Паузы (сек)", "Перекуры (сек)"])
+                for row in sessions:
                     writer.writerow([
                         row.get("start_time", "")[:10],
                         row.get("project_name", ""),
+                        row.get("stage_name", ""),
                         row.get("start_time", ""),
                         row.get("end_time", ""),
                         row.get("work_seconds", 0),
