@@ -300,6 +300,7 @@ class App:
                 pass
         self._dashboard = DashboardWindow(self._root)
         self._dashboard.protocol("WM_DELETE_WINDOW", lambda: self._close_dashboard())
+        self._dashboard.after(100, self._dashboard.lift)
 
     def _close_dashboard(self):
         if self._dashboard:
@@ -315,6 +316,7 @@ class App:
                 pass
         self._settings = SettingsWindow(self._root)
         self._settings.protocol("WM_DELETE_WINDOW", lambda: self._close_settings())
+        self._settings.after(100, self._settings.lift)
 
     def _close_settings(self):
         if self._settings:

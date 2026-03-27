@@ -387,6 +387,8 @@ class DashboardWindow(ctk.CTkToplevel):
 
     def _show_project_menu(self, event, project_name: str):
         """Контекстное меню для проекта."""
+        self._last_click_x = event.x_root
+        self._last_click_y = event.y_root
         menu = tk.Menu(self, tearoff=0, bg="#242424", fg="#e0e0e0",
                        activebackground="#3d8ef0", activeforeground="#ffffff",
                        font=("Segoe UI", 11))
@@ -395,6 +397,8 @@ class DashboardWindow(ctk.CTkToplevel):
 
     def _show_stage_menu(self, event, project_name: str, stage_name: str):
         """Контекстное меню для этапа."""
+        self._last_click_x = event.x_root
+        self._last_click_y = event.y_root
         menu = tk.Menu(self, tearoff=0, bg="#242424", fg="#e0e0e0",
                        activebackground="#3d8ef0", activeforeground="#ffffff",
                        font=("Segoe UI", 11))
@@ -405,7 +409,10 @@ class DashboardWindow(ctk.CTkToplevel):
         """Диалог подтверждения удаления проекта."""
         dialog = ctk.CTkToplevel(self)
         dialog.title("Удаление проекта")
-        dialog.geometry("400x150")
+        dw, dh = 400, 150
+        mx = getattr(self, "_last_click_x", self.winfo_rootx() + 100)
+        my = getattr(self, "_last_click_y", self.winfo_rooty() + 100)
+        dialog.geometry(f"{dw}x{dh}+{mx - dw // 2}+{my}")
         dialog.resizable(False, False)
         dialog.configure(fg_color=BG_MAIN)
         dialog.attributes("-topmost", True)
@@ -447,7 +454,10 @@ class DashboardWindow(ctk.CTkToplevel):
         """Диалог подтверждения удаления этапа."""
         dialog = ctk.CTkToplevel(self)
         dialog.title("Удаление этапа")
-        dialog.geometry("380x140")
+        dw, dh = 380, 140
+        mx = getattr(self, "_last_click_x", self.winfo_rootx() + 100)
+        my = getattr(self, "_last_click_y", self.winfo_rooty() + 100)
+        dialog.geometry(f"{dw}x{dh}+{mx - dw // 2}+{my}")
         dialog.resizable(False, False)
         dialog.configure(fg_color=BG_MAIN)
         dialog.attributes("-topmost", True)

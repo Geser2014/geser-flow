@@ -34,7 +34,10 @@ class MainWindow(ctk.CTkToplevel):
     def __init__(self, master, on_open_dashboard=None, on_open_settings=None):
         super().__init__(master)
         self.title("Geser Flow")
-        self.geometry("320x420")
+        w, h = 320, 420
+        x = (self.winfo_screenwidth() - w) // 2
+        y = (self.winfo_screenheight() - h) // 2
+        self.geometry(f"{w}x{h}+{x}+{y}")
         self.resizable(False, False)
         self.configure(fg_color=BG_MAIN)
         if os.path.exists(_ICON_PATH):
