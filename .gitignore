@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+*.pyo
+data/*.db
+*.lock
+.env
+create_shortcut.vbs

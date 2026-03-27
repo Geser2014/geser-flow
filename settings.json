@@ -1,0 +1,9 @@
+{
+  "check_interval_min": 15,
+  "check_timeout_sec": 60,
+  "break_mode_enabled": true,
+  "break_work_interval_min": 90,
+  "break_duration_min": 10,
+  "autostart": false,
+  "theme": "dark"
+}
