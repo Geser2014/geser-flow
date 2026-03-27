@@ -144,12 +144,17 @@ class App:
         dialog.grab_set()
 
         project = session["project_name"]
+        stage = session.get("stage_name", "")
         start = session["start_time"]
         sid = session["id"]
 
+        display = f'"{project}"'
+        if stage and stage != "Общее":
+            display += f" → {stage}"
+
         ctk.CTkLabel(
             dialog,
-            text=f'Найдена незавершённая сессия:\n"{project}", начата в {start}.\nЗавершить её?',
+            text=f'Найдена незавершённая сессия:\n{display}, начата в {start}.\nЗавершить её?',
             font=("Segoe UI", 13), text_color="#e0e0e0",
             wraplength=340, justify="center",
         ).pack(pady=(18, 12))
