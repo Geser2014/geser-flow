@@ -44,14 +44,15 @@ class PopupCheck(ctk.CTkToplevel):
         self._countdown()
 
     def _position(self) -> str:
+        w, h = 290, 170
         try:
-            sw = self.winfo_screenwidth()
-            sh = self.winfo_screenheight()
+            mx = self.winfo_pointerx()
+            my = self.winfo_pointery()
         except Exception:
-            sw, sh = 1920, 1080
-        x = sw - 310
-        y = sh - 220
-        return f"290x170+{x}+{y}"
+            mx, my = 960, 540
+        x = mx - w // 2
+        y = my - h // 2
+        return f"{w}x{h}+{x}+{y}"
 
     def _build_ui(self):
         # Карточка
