@@ -51,7 +51,10 @@ class SettingsWindow(ctk.CTkToplevel):
     def __init__(self, master):
         super().__init__(master)
         self.title("Geser Flow — Настройки")
-        self.geometry("360x520")
+        w, h = 360, 520
+        x = (self.winfo_screenwidth() - w) // 2
+        y = (self.winfo_screenheight() - h) // 2
+        self.geometry(f"{w}x{h}+{x}+{y}")
         self.resizable(False, False)
         self.configure(fg_color=BG_MAIN)
         if os.path.exists(_ICON_PATH):

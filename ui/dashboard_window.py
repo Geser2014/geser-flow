@@ -40,7 +40,10 @@ class DashboardWindow(ctk.CTkToplevel):
     def __init__(self, master):
         super().__init__(master)
         self.title("Geser Flow — Дашборд")
-        self.geometry("800x560")
+        w, h = 800, 560
+        x = (self.winfo_screenwidth() - w) // 2
+        y = (self.winfo_screenheight() - h) // 2
+        self.geometry(f"{w}x{h}+{x}+{y}")
         self.minsize(700, 400)
         self.configure(fg_color=BG_MAIN)
         if os.path.exists(_ICON_PATH):
