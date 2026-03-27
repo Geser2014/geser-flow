@@ -291,6 +291,64 @@ def delete_session(session_id: int) -> None:
         conn.close()
 
 
+def delete_stage(stage_id: int) -> None:
+    """Удаляет этап и все его сессии (с паузами)."""
+    conn = _connect()
+    try:
+        # Get all sessions for this stage
+        sessions = conn.execute(
+            "SELECT id FROM sessions WHERE stage_id = ?", (stage_id,)
+        ).fetchall()
+        for s in sessions:
+            conn.execute("DELETE FROM pauses WHERE session_id = ?", (s["id"],))
+            conn.execute("DELETE FROM sessions WHERE id = ?", (s["id"],))
+        conn.execute("DELETE FROM stages WHERE id = ?", (stage_id,))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def delete_project(project_id: int) -> None:
+    """Удаляет проект, все его этапы и сессии (с паузами)."""
+    conn = _connect()
+    try:
+        # Get all sessions for this project
+        sessions = conn.execute(
+            "SELECT id FROM sessions WHERE project_id = ?", (project_id,)
+        ).fetchall()
+        for s in sessions:
+            conn.execute("DELETE FROM pauses WHERE session_id = ?", (s["id"],))
+            conn.execute("DELETE FROM sessions WHERE id = ?", (s["id"],))
+        conn.execute("DELETE FROM stages WHERE project_id = ?", (project_id,))
+        conn.execute("DELETE FROM projects WHERE id = ?", (project_id,))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_project_id_by_name(name: str) -> int | None:
+    """Возвращает id проекта по имени."""
+    conn = _connect()
+    try:
+        row = conn.execute("SELECT id FROM projects WHERE name = ?", (name,)).fetchone()
+        return row["id"] if row else None
+    finally:
+        conn.close()
+
+
+def get_stage_id(project_id: int, stage_name: str) -> int | None:
+    """Возвращает id этапа по имени и проекту."""
+    conn = _connect()
+    try:
+        row = conn.execute(
+            "SELECT id FROM stages WHERE project_id = ? AND name = ?",
+            (project_id, stage_name),
+        ).fetchone()
+        return row["id"] if row else None
+    finally:
+        conn.close()
+
+
 def get_stats_today() -> dict:
     """Статистика за сегодня: work_seconds, pause_seconds, break_seconds, session_count."""
     today = datetime.now().strftime("%Y-%m-%d")
