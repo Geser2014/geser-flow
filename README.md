@@ -1,60 +1,60 @@
 # Geser Flow ⏱
 
-A lightweight Windows desktop app for tracking your work time — per project, with smart activity checks and break reminders.
+Легковесное Windows-приложение для учёта рабочего времени по проектам.
 
-> Stay in flow. Track what matters.
+> Оставайся в потоке. Отслеживай то, что важно.
 
 ![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-blue)
 ![License: MIT](https://img.shields.io/badge/License-MIT-green)
 ![Platform: Windows](https://img.shields.io/badge/Platform-Windows-lightgrey)
 
-## What it does
+## Что умеет
 
-- **Track work time per project** — start a session, pick a project, get a clean timer
-- **Asks "Still working?"** every N minutes so you never forget to stop the timer
-- **Auto-pauses** when you don't respond — no more inflated hours
-- **Reminds you to take a break** after long focus sessions
-- **Lives in your system tray** — always there, never in the way
-- **Dashboard** with filtering by project, time period, and CSV export
-- **Remembers your projects** with autocomplete from history
-- **Detects unfinished sessions** on startup and lets you close them cleanly
+- **Учёт времени по проектам** — запусти сессию, выбери проект, получи точный таймер
+- **Спрашивает «Всё ещё работаешь?»** каждые N минут — больше не забудешь остановить таймер
+- **Автопауза** если не ответил — никаких раздутых часов
+- **Напоминает об отдыхе** после долгих сессий
+- **Живёт в системном трее** — всегда под рукой, не мешает
+- **Дашборд** с фильтрацией по проекту, периоду и экспортом в CSV
+- **Помнит проекты** — автодополнение из истории
+- **Находит незавершённые сессии** при запуске и предлагает закрыть
 
-## Quick start
+## Быстрый старт
 
 ```bash
 pip install -r requirements.txt
 python main.py
 ```
 
-## Run without console window (recommended)
+## Запуск без консольного окна (рекомендуется)
 
-Double-click `run.bat` or run:
+Двойной клик по `run.bat` или:
 
 ```bash
 pythonw main.py
 ```
 
-## Settings
+## Настройки
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| Check interval | 15 min | How often to ask "Still working?" |
-| Check timeout | 60 sec | Time to respond before auto-pause |
-| Break mode | On | Enable break reminders |
-| Work interval | 90 min | Continuous work before break reminder |
-| Break duration | 10 min | Suggested break length |
-| Auto-start | Off | Launch with Windows |
+| Параметр | По умолчанию | Описание |
+|----------|--------------|----------|
+| Интервал проверки | 15 мин | Как часто спрашивать «Всё ещё работаешь?» |
+| Таймаут ответа | 60 сек | Время на ответ до автопаузы |
+| Режим перекуров | Вкл | Напоминания об отдыхе |
+| Работа без перерыва | 90 мин | Непрерывная работа до напоминания |
+| Длительность перерыва | 10 мин | Рекомендуемый перерыв |
+| Автозапуск | Выкл | Запускать вместе с Windows |
 
-All settings are configurable from the in-app settings window.
+Все настройки меняются в окне настроек приложения.
 
-## Auto-start with Windows
+## Автозапуск с Windows
 
-Toggle it in the app's settings — it manages the Windows registry key automatically.
+Включается в настройках приложения — ключ реестра управляется автоматически.
 
-## Contributing
+## Участие в разработке
 
-PRs are welcome. Open an issue for bugs or feature requests.
+PR приветствуются. Баги и предложения — через Issues.
 
-## License
+## Лицензия
 
 MIT — Geser, 2025
