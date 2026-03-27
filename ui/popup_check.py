@@ -4,6 +4,7 @@
 """
 
 import os
+import winsound
 import customtkinter as ctk
 import config
 
@@ -42,6 +43,12 @@ class PopupCheck(ctk.CTkToplevel):
         self.protocol("WM_DELETE_WINDOW", self._answer_no)
         self._build_ui()
         self._countdown()
+
+        # Принудительно поверх всех окон + звук
+        self.lift()
+        self.focus_force()
+        self.after(100, lambda: self.attributes("-topmost", True))
+        winsound.MessageBeep(winsound.MB_ICONEXCLAMATION)
 
     def _position(self) -> str:
         w, h = 290, 170
