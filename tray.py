@@ -11,16 +11,22 @@ from db import get_stats_today
 
 
 def _create_icon_image() -> Image.Image:
-    """Генерирует иконку 64×64: тёмный круг, белые буквы GF."""
+    """Генерирует иконку 64×64: тёмный скруглённый квадрат, белая G."""
     img = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
-    draw.ellipse([2, 2, 62, 62], fill="#242424")
-    # Пробуем системный шрифт, иначе default
+    draw.rounded_rectangle([2, 2, 62, 62], radius=12, fill="#141614")
     try:
-        font = ImageFont.truetype("arial.ttf", 22)
+        font = ImageFont.truetype("segoeuib.ttf", 38)
     except OSError:
-        font = ImageFont.load_default()
-    draw.text((12, 16), "GF", fill="white", font=font)
+        try:
+            font = ImageFont.truetype("arialbd.ttf", 38)
+        except OSError:
+            font = ImageFont.load_default()
+    bbox = draw.textbbox((0, 0), "G", font=font)
+    tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+    x = (64 - tw) / 2 - bbox[0]
+    y = (64 - th) / 2 - bbox[1]
+    draw.text((x, y), "G", fill="#e8e8e8", font=font)
     return img
 
 

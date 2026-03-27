@@ -9,6 +9,8 @@ import tempfile
 import customtkinter as ctk
 from datetime import datetime
 
+_ICON_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "icon.ico")
+
 import config
 from db import init_db, get_interrupted_session, mark_interrupted, end_session, delete_session
 from state import AppState
@@ -78,6 +80,8 @@ class App:
 
         self._root = ctk.CTk()
         self._root.withdraw()  # Скрываем корневое окно — используем Toplevel
+        if os.path.exists(_ICON_PATH):
+            self._root.iconbitmap(_ICON_PATH)
 
         self._state = AppState()
         self._main_window: MainWindow | None = None

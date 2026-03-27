@@ -3,16 +3,19 @@
 Появляется после break_work_interval_min минут непрерывной работы.
 """
 
+import os
 import customtkinter as ctk
 import config
 
+_ICON_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets", "icon.ico")
 
-BG_MAIN = "#1a1a1a"
-BG_CARD = "#242424"
-TEXT = "#e0e0e0"
-ACCENT = "#3d8ef0"
-GREEN = "#4caf50"
-YELLOW = "#ff9800"
+BG_MAIN = "#0d0f0d"
+BG_CARD = "#141614"
+BORDER = "#2a2e2a"
+TEXT = "#e8e8e8"
+ACCENT = "#2ec4a0"
+ORANGE = "#e8a838"
+MUTED = "#8a8e8a"
 
 
 class PopupBreak(ctk.CTkToplevel):
@@ -24,6 +27,8 @@ class PopupBreak(ctk.CTkToplevel):
         self.configure(fg_color=BG_MAIN)
         self.attributes("-topmost", True)
         self.overrideredirect(False)
+        if os.path.exists(_ICON_PATH):
+            self.after(300, lambda: self.iconbitmap(_ICON_PATH))
 
         self._on_break = on_break
         self._on_skip = on_skip
@@ -40,37 +45,45 @@ class PopupBreak(ctk.CTkToplevel):
             sh = self.winfo_screenheight()
         except Exception:
             sw, sh = 1920, 1080
-        x = sw - 320
-        y = sh - 220
-        return f"300x180+{x}+{y}"
+        x = sw - 330
+        y = sh - 230
+        return f"310x190+{x}+{y}"
 
     def _build_ui(self):
-        ctk.CTkLabel(
-            self, text=f"Ты работаешь уже {self._work_minutes} мин.",
-            font=("Segoe UI", 14, "bold"), text_color=TEXT,
-        ).pack(pady=(15, 3))
+        card = ctk.CTkFrame(
+            self, fg_color=BG_CARD,
+            border_width=1, border_color=BORDER, corner_radius=10,
+        )
+        card.pack(fill="both", expand=True, padx=8, pady=8)
 
         ctk.CTkLabel(
-            self, text="Пора размяться!",
-            font=("Segoe UI", 14), text_color=YELLOW,
-        ).pack(pady=(0, 12))
+            card, text=f"Ты работаешь уже {self._work_minutes} мин",
+            font=("Segoe UI", 13, "bold"), text_color=TEXT,
+        ).pack(pady=(16, 3))
 
-        btn_frame = ctk.CTkFrame(self, fg_color="transparent")
-        btn_frame.pack(pady=(5, 0))
+        ctk.CTkLabel(
+            card, text="Пора размяться!",
+            font=("Segoe UI", 13), text_color=ORANGE,
+        ).pack(pady=(0, 14))
+
+        btn_frame = ctk.CTkFrame(card, fg_color="transparent")
+        btn_frame.pack(pady=(0, 14))
 
         ctk.CTkButton(
             btn_frame, text=f"☕ Отдохнуть {self._break_minutes}м",
-            width=140, height=38, font=("Segoe UI", 13),
-            fg_color=YELLOW, hover_color="#e68900", text_color="#1a1a1a",
+            width=140, height=38, font=("Segoe UI", 12, "bold"),
+            fg_color=ORANGE, hover_color="#c48a28",
+            text_color="#0d0f0d", corner_radius=6,
             command=self._take_break,
-        ).pack(side="left", padx=6)
+        ).pack(side="left", padx=5)
 
         ctk.CTkButton(
             btn_frame, text="→ Продолжить",
-            width=120, height=38, font=("Segoe UI", 13),
-            fg_color=GREEN, hover_color="#388e3c",
+            width=120, height=38, font=("Segoe UI", 12),
+            fg_color=ACCENT, hover_color="#25a385",
+            text_color="#0d0f0d", corner_radius=6,
             command=self._skip,
-        ).pack(side="left", padx=6)
+        ).pack(side="left", padx=5)
 
     def _take_break(self):
         self._close()

@@ -9,6 +9,8 @@ from datetime import datetime, timedelta
 import customtkinter as ctk
 from db import get_stats_range, get_daily_totals, get_projects, get_all_projects_with_totals
 
+_ICON_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets", "icon.ico")
+
 BG_MAIN = "#1a1a1a"
 BG_CARD = "#242424"
 BG_ROW_ALT = "#2a2a2a"
@@ -34,6 +36,8 @@ class DashboardWindow(ctk.CTkToplevel):
         self.geometry("800x560")
         self.minsize(700, 400)
         self.configure(fg_color=BG_MAIN)
+        if os.path.exists(_ICON_PATH):
+            self.after(300, lambda: self.iconbitmap(_ICON_PATH))
 
         self._sort_col = None
         self._sort_reverse = False
