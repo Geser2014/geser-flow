@@ -297,9 +297,10 @@ class DashboardWindow(ctk.CTkToplevel):
                     font=fonts[i], text_color=TEXT, anchor="w",
                 ).pack(side="left", padx=1)
 
-            # Bind double-click for expand/collapse
-            row_frame.bind("<Double-Button-1>", lambda e, pn=project_name: self._toggle_expand(pn))
-            row_frame.bind("<Button-3>", lambda e, pn=project_name: self._show_project_menu(e, pn))
+            # Bind double-click and right-click to frame AND all children
+            for widget in [row_frame] + list(row_frame.winfo_children()):
+                widget.bind("<Double-Button-1>", lambda e, pn=project_name: self._toggle_expand(pn))
+                widget.bind("<Button-3>", lambda e, pn=project_name: self._show_project_menu(e, pn))
 
             # Sub-rows for stages if expanded
             if is_expanded:
@@ -325,7 +326,8 @@ class DashboardWindow(ctk.CTkToplevel):
                             font=("Segoe UI", 11), text_color=MUTED, anchor="w",
                         ).pack(side="left", padx=1)
 
-                    stage_frame.bind("<Button-3>", lambda e, pn=project_name, sn=stage.get("stage_name", ""): self._show_stage_menu(e, pn, sn))
+                    for widget in [stage_frame] + list(stage_frame.winfo_children()):
+                        widget.bind("<Button-3>", lambda e, pn=project_name, sn=stage.get("stage_name", ""): self._show_stage_menu(e, pn, sn))
 
                 # Pie chart
                 stages_with_time = [s for s in proj.get("stages", []) if s.get("work_seconds", 0) > 0]
