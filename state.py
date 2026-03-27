@@ -20,6 +20,7 @@ class AppState:
     def _init_state(self):
         self.session_id: int | None = None
         self.project_name: str = ""
+        self.stage_name: str = ""
         self.status: str = "idle"  # idle | working | paused | on_break
         self.session_start: datetime | None = None
         self.work_seconds: int = 0

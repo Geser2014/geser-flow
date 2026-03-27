@@ -30,9 +30,18 @@ def init_db() -> None:
                 created_at TEXT DEFAULT (datetime('now','localtime'))
             );
 
+            CREATE TABLE IF NOT EXISTS stages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id INTEGER NOT NULL REFERENCES projects(id),
+                name TEXT NOT NULL,
+                created_at TEXT DEFAULT (datetime('now','localtime')),
+                UNIQUE(project_id, name)
+            );
+
             CREATE TABLE IF NOT EXISTS sessions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 project_id INTEGER REFERENCES projects(id),
+                stage_id INTEGER REFERENCES stages(id),
                 start_time TEXT NOT NULL,
                 end_time TEXT,
                 work_seconds INTEGER DEFAULT 0,
@@ -49,6 +58,30 @@ def init_db() -> None:
                 end_time TEXT,
                 type TEXT NOT NULL
             );
+        """)
+        conn.commit()
+
+        # Migration: add stage_id column if missing (existing DB)
+        cols = [r[1] for r in conn.execute("PRAGMA table_info(sessions)").fetchall()]
+        if "stage_id" not in cols:
+            conn.execute("ALTER TABLE sessions ADD COLUMN stage_id INTEGER REFERENCES stages(id)")
+            conn.commit()
+
+        # Migration: create "Общее" stage for projects that don't have any stages
+        projects_without_stages = conn.execute("""
+            SELECT id FROM projects
+            WHERE id NOT IN (SELECT DISTINCT project_id FROM stages)
+        """).fetchall()
+        for row in projects_without_stages:
+            conn.execute("INSERT INTO stages (project_id, name) VALUES (?, ?)", (row[0], "Общее"))
+        conn.commit()
+
+        # Migration: assign stage_id to sessions that don't have one
+        conn.execute("""
+            UPDATE sessions SET stage_id = (
+                SELECT st.id FROM stages st
+                WHERE st.project_id = sessions.project_id AND st.name = 'Общее'
+            ) WHERE stage_id IS NULL
         """)
         conn.commit()
     finally:
@@ -79,15 +112,90 @@ def get_projects() -> list[str]:
         conn.close()
 
 
-def start_session(project_name: str) -> int:
+def get_or_create_stage(project_id: int, stage_name: str) -> int:
+    """Возвращает id этапа, создаёт если не существует."""
+    conn = _connect()
+    try:
+        row = conn.execute(
+            "SELECT id FROM stages WHERE project_id = ? AND name = ?",
+            (project_id, stage_name),
+        ).fetchone()
+        if row:
+            return row["id"]
+        cur = conn.execute(
+            "INSERT INTO stages (project_id, name) VALUES (?, ?)",
+            (project_id, stage_name),
+        )
+        conn.commit()
+        return cur.lastrowid
+    finally:
+        conn.close()
+
+
+def get_stages(project_id: int) -> list[str]:
+    """Этапы проекта, отсортированные по последней активности сессий (новые первые)."""
+    conn = _connect()
+    try:
+        rows = conn.execute(
+            """SELECT st.name
+               FROM stages st
+               LEFT JOIN sessions s ON s.stage_id = st.id AND s.status != 'active'
+               WHERE st.project_id = ?
+               GROUP BY st.id
+               ORDER BY MAX(s.end_time) DESC NULLS LAST""",
+            (project_id,),
+        ).fetchall()
+        return [r["name"] for r in rows]
+    finally:
+        conn.close()
+
+
+def get_projects_sorted() -> list[str]:
+    """Проекты, отсортированные по последней активности сессий (новые первые)."""
+    conn = _connect()
+    try:
+        rows = conn.execute(
+            """SELECT p.name
+               FROM projects p
+               LEFT JOIN sessions s ON s.project_id = p.id AND s.status != 'active'
+               GROUP BY p.id
+               ORDER BY MAX(s.end_time) DESC NULLS LAST"""
+        ).fetchall()
+        return [r["name"] for r in rows]
+    finally:
+        conn.close()
+
+
+def get_last_session_info() -> tuple[str, str] | None:
+    """Возвращает (project_name, stage_name) последней завершённой сессии."""
+    conn = _connect()
+    try:
+        row = conn.execute(
+            """SELECT p.name as project_name, st.name as stage_name
+               FROM sessions s
+               JOIN projects p ON p.id = s.project_id
+               LEFT JOIN stages st ON st.id = s.stage_id
+               WHERE s.status = 'completed'
+               ORDER BY s.end_time DESC
+               LIMIT 1"""
+        ).fetchone()
+        if row:
+            return (row["project_name"], row["stage_name"])
+        return None
+    finally:
+        conn.close()
+
+
+def start_session(project_name: str, stage_name: str = "Общее") -> int:
     """Начинает новую сессию, возвращает session_id."""
     project_id = get_or_create_project(project_name)
+    stage_id = get_or_create_stage(project_id, stage_name)
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     conn = _connect()
     try:
         cur = conn.execute(
-            "INSERT INTO sessions (project_id, start_time, status) VALUES (?, ?, 'active')",
-            (project_id, now),
+            "INSERT INTO sessions (project_id, stage_id, start_time, status) VALUES (?, ?, ?, 'active')",
+            (project_id, stage_id, now),
         )
         conn.commit()
         return cur.lastrowid
@@ -143,9 +251,11 @@ def get_interrupted_session() -> dict | None:
     conn = _connect()
     try:
         row = conn.execute(
-            """SELECT s.id, s.start_time, s.work_seconds, p.name as project_name
+            """SELECT s.id, s.start_time, s.work_seconds,
+                      p.name as project_name, st.name as stage_name
                FROM sessions s
                JOIN projects p ON p.id = s.project_id
+               LEFT JOIN stages st ON st.id = s.stage_id
                WHERE s.status = 'active'
                ORDER BY s.id DESC LIMIT 1"""
         ).fetchone()
@@ -206,10 +316,12 @@ def get_stats_range(date_from: str, date_to: str, project_name: str | None = Non
     conn = _connect()
     try:
         query = """
-            SELECT s.id, p.name as project_name, s.start_time, s.end_time,
+            SELECT s.id, p.name as project_name, st.name as stage_name,
+                   s.start_time, s.end_time,
                    s.work_seconds, s.pause_seconds, s.break_seconds, s.status
             FROM sessions s
             JOIN projects p ON p.id = s.project_id
+            LEFT JOIN stages st ON st.id = s.stage_id
             WHERE date(s.start_time) >= ? AND date(s.start_time) <= ?
               AND s.status != 'active'
         """
@@ -220,6 +332,58 @@ def get_stats_range(date_from: str, date_to: str, project_name: str | None = Non
         query += " ORDER BY s.start_time DESC"
         rows = conn.execute(query, params).fetchall()
         return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def get_projects_with_stages_stats(date_from: str, date_to: str) -> list[dict]:
+    """Проекты с агрегированной статистикой и вложенными этапами за период."""
+    conn = _connect()
+    try:
+        # Get per-stage stats
+        stage_rows = conn.execute(
+            """SELECT p.id as project_id, p.name as project_name,
+                      st.id as stage_id, st.name as stage_name,
+                      COALESCE(SUM(s.work_seconds), 0) as work_seconds,
+                      COALESCE(SUM(s.pause_seconds), 0) as pause_seconds,
+                      COALESCE(SUM(s.break_seconds), 0) as break_seconds,
+                      COUNT(s.id) as session_count
+               FROM projects p
+               JOIN stages st ON st.project_id = p.id
+               LEFT JOIN sessions s ON s.stage_id = st.id
+                   AND date(s.start_time) >= ? AND date(s.start_time) <= ?
+                   AND s.status != 'active'
+               GROUP BY p.id, st.id
+               ORDER BY p.name ASC, st.created_at ASC""",
+            (date_from, date_to),
+        ).fetchall()
+
+        projects: dict[int, dict] = {}
+        for r in stage_rows:
+            pid = r["project_id"]
+            if pid not in projects:
+                projects[pid] = {
+                    "project_name": r["project_name"],
+                    "work_seconds": 0,
+                    "pause_seconds": 0,
+                    "break_seconds": 0,
+                    "session_count": 0,
+                    "stages": [],
+                }
+            stage_dict = {
+                "stage_name": r["stage_name"],
+                "work_seconds": r["work_seconds"],
+                "pause_seconds": r["pause_seconds"],
+                "break_seconds": r["break_seconds"],
+                "session_count": r["session_count"],
+            }
+            projects[pid]["stages"].append(stage_dict)
+            projects[pid]["work_seconds"] += r["work_seconds"]
+            projects[pid]["pause_seconds"] += r["pause_seconds"]
+            projects[pid]["break_seconds"] += r["break_seconds"]
+            projects[pid]["session_count"] += r["session_count"]
+
+        return list(projects.values())
     finally:
         conn.close()
 
