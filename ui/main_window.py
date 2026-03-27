@@ -7,8 +7,9 @@ import os
 import customtkinter as ctk
 from state import AppState
 from db import (
-    get_projects, start_session, end_session, start_pause, end_pause,
-    get_stats_today,
+    get_projects_sorted, get_stages, get_or_create_project,
+    get_last_session_info, start_session, end_session,
+    start_pause, end_pause, get_stats_today, get_or_create_stage,
 )
 import config
 
@@ -98,36 +99,93 @@ class MainWindow(ctk.CTkToplevel):
         )
         self._lbl_subtitle.pack(pady=(0, 24))
 
-        # Карточка ввода проекта
+        # Карточка ввода проекта и этапа
         input_card = ctk.CTkFrame(
             self._idle_frame, fg_color=BG_CARD,
             border_width=1, border_color=BORDER, corner_radius=8,
         )
         input_card.pack(fill="x", pady=(0, 5))
 
+        # --- Project dropdown ---
         ctk.CTkLabel(
             input_card, text="ПРОЕКТ",
             font=("Segoe UI", 9), text_color=MUTED,
         ).pack(padx=14, pady=(10, 2), anchor="w")
 
-        self._entry_project = ctk.CTkEntry(
-            input_card, placeholder_text="Над чем работаешь?",
-            width=250, height=36, fg_color=BG_MAIN, text_color=TEXT,
+        self._project_var = ctk.StringVar(value="")
+        self._project_menu = ctk.CTkOptionMenu(
+            input_card,
+            variable=self._project_var,
+            values=[],
+            width=250, height=36,
+            fg_color=BG_MAIN,
+            text_color=TEXT,
+            button_color=BORDER,
+            button_hover_color=HOVER,
+            dropdown_fg_color=BG_CARD,
+            dropdown_text_color=TEXT,
+            dropdown_hover_color=HOVER,
+            command=self._on_project_selected,
+        )
+        self._project_menu.pack(padx=14, pady=(0, 6))
+
+        self._new_project_frame = ctk.CTkFrame(input_card, fg_color="transparent")
+        self._entry_new_project = ctk.CTkEntry(
+            self._new_project_frame, placeholder_text="Название проекта",
+            width=206, height=32, fg_color=BG_MAIN, text_color=TEXT,
             border_color=BORDER, border_width=1,
             placeholder_text_color=MUTED,
         )
-        self._entry_project.pack(padx=14, pady=(0, 12))
+        self._entry_new_project.pack(side="left", padx=(0, 4))
+        ctk.CTkButton(
+            self._new_project_frame, text="✓", width=36, height=32,
+            fg_color=ACCENT, hover_color="#25a385",
+            text_color="#0d0f0d", corner_radius=6,
+            command=self._confirm_new_project,
+        ).pack(side="left")
 
-        # Список автодополнения
-        self._listbox_frame = ctk.CTkFrame(
-            self._idle_frame, fg_color=BG_CARD,
-            border_width=1, border_color=BORDER, corner_radius=6,
+        # --- Stage dropdown ---
+        ctk.CTkLabel(
+            input_card, text="ЭТАП",
+            font=("Segoe UI", 9), text_color=MUTED,
+        ).pack(padx=14, pady=(4, 2), anchor="w")
+
+        self._stage_var = ctk.StringVar(value="")
+        self._stage_menu = ctk.CTkOptionMenu(
+            input_card,
+            variable=self._stage_var,
+            values=[],
+            width=250, height=36,
+            fg_color=BG_MAIN,
+            text_color=TEXT,
+            button_color=BORDER,
+            button_hover_color=HOVER,
+            dropdown_fg_color=BG_CARD,
+            dropdown_text_color=TEXT,
+            dropdown_hover_color=HOVER,
+            command=self._on_stage_selected,
         )
-        self._listbox_var = []
-        self._suggestion_buttons: list[ctk.CTkButton] = []
+        self._stage_menu.pack(padx=14, pady=(0, 6))
 
-        self._entry_project.bind("<KeyRelease>", self._on_entry_change)
-        self._entry_project.bind("<Return>", lambda e: self._start_work())
+        self._new_stage_frame = ctk.CTkFrame(input_card, fg_color="transparent")
+        self._entry_new_stage = ctk.CTkEntry(
+            self._new_stage_frame, placeholder_text="Название этапа",
+            width=206, height=32, fg_color=BG_MAIN, text_color=TEXT,
+            border_color=BORDER, border_width=1,
+            placeholder_text_color=MUTED,
+        )
+        self._entry_new_stage.pack(side="left", padx=(0, 4))
+        ctk.CTkButton(
+            self._new_stage_frame, text="✓", width=36, height=32,
+            fg_color=ACCENT, hover_color="#25a385",
+            text_color="#0d0f0d", corner_radius=6,
+            command=self._confirm_new_stage,
+        ).pack(side="left")
+
+        # Padding at bottom of card
+        ctk.CTkLabel(input_card, text="", height=4, fg_color="transparent").pack()
+
+        self._load_projects_dropdown()
 
         self._btn_start = ctk.CTkButton(
             self._idle_frame, text="▶  НАЧАТЬ РАБОТУ",
@@ -221,6 +279,93 @@ class MainWindow(ctk.CTkToplevel):
         else:
             self._lbl_today.configure(text="")
 
+    # --- Dropdown logic ---
+
+    def _load_projects_dropdown(self):
+        """Loads projects into the project dropdown."""
+        projects = get_projects_sorted()
+        values = ["➕ Новый проект..."] + projects
+        self._project_menu.configure(values=values)
+
+        last = get_last_session_info()
+        if last:
+            last_project, last_stage = last
+            if last_project in projects:
+                self._project_var.set(last_project)
+                self._load_stages_dropdown(last_project, default_stage=last_stage)
+                return
+
+        if projects:
+            self._project_var.set(projects[0])
+            self._load_stages_dropdown(projects[0])
+        else:
+            self._project_var.set("➕ Новый проект...")
+            self._stage_menu.configure(values=[])
+            self._stage_var.set("")
+
+    def _load_stages_dropdown(self, project_name, default_stage=None):
+        """Loads stages for a given project into the stage dropdown."""
+        project_id = get_or_create_project(project_name)
+        stages = get_stages(project_id)
+        values = ["➕ Новый этап..."] + stages
+        self._stage_menu.configure(values=values)
+
+        if default_stage and default_stage in stages:
+            self._stage_var.set(default_stage)
+        elif stages:
+            self._stage_var.set(stages[0])
+        else:
+            self._stage_var.set("➕ Новый этап...")
+
+    def _on_project_selected(self, choice):
+        """Called when user selects a project from the dropdown."""
+        if choice == "➕ Новый проект...":
+            self._new_project_frame.pack(padx=14, pady=(0, 6))
+            self._entry_new_project.focus()
+            self._stage_menu.configure(values=[])
+            self._stage_var.set("")
+        else:
+            self._new_project_frame.pack_forget()
+            self._load_stages_dropdown(choice)
+
+    def _on_stage_selected(self, choice):
+        """Called when user selects a stage from the dropdown."""
+        if choice == "➕ Новый этап...":
+            self._new_stage_frame.pack(padx=14, pady=(0, 6))
+            self._entry_new_stage.focus()
+        else:
+            self._new_stage_frame.pack_forget()
+
+    def _confirm_new_project(self):
+        """Creates a new project and refreshes the dropdown."""
+        name = self._entry_new_project.get().strip()
+        if not name:
+            return
+        project_id = get_or_create_project(name)
+        get_or_create_stage(project_id, "Общее")
+        self._entry_new_project.delete(0, "end")
+        self._new_project_frame.pack_forget()
+        self._load_projects_dropdown()
+        # Select the newly created project
+        self._project_var.set(name)
+        self._load_stages_dropdown(name)
+
+    def _confirm_new_stage(self):
+        """Creates a new stage under the current project and refreshes the dropdown."""
+        stage_name = self._entry_new_stage.get().strip()
+        if not stage_name:
+            return
+        project_name = self._project_var.get()
+        if not project_name or project_name == "➕ Новый проект...":
+            return
+        project_id = get_or_create_project(project_name)
+        get_or_create_stage(project_id, stage_name)
+        self._entry_new_stage.delete(0, "end")
+        self._new_stage_frame.pack_forget()
+        self._load_stages_dropdown(project_name, default_stage=stage_name)
+
+    # --- Render state ---
+
     def _render_state(self):
         """Показывает нужный набор виджетов по текущему статусу."""
         if self.app_state.status == "idle":
@@ -230,10 +375,14 @@ class MainWindow(ctk.CTkToplevel):
             self._lbl_pause_info.configure(text="")
             self._stop_timer()
             self._update_today_label()
+            self._load_projects_dropdown()
         else:
             self._idle_frame.pack_forget()
             self._work_frame.pack(fill="both", expand=True)
-            self._lbl_project.configure(text=self.app_state.project_name)
+            display = self.app_state.project_name
+            if self.app_state.stage_name and self.app_state.stage_name != "Общее":
+                display += f" → {self.app_state.stage_name}"
+            self._lbl_project.configure(text=display)
             self._update_indicator()
             if self.app_state.status in ("paused", "on_break"):
                 self._btn_resume.pack(pady=(6, 0), before=self._btn_stop)
@@ -278,58 +427,22 @@ class MainWindow(ctk.CTkToplevel):
 
         self._timer_job = self.after(1000, self._tick)
 
-    # --- Автодополнение ---
-
-    def _on_entry_change(self, event=None):
-        """Показывает подсказки при вводе имени проекта."""
-        text = self._entry_project.get().strip().lower()
-        # Убираем старые подсказки
-        self._listbox_frame.pack_forget()
-        for btn in self._suggestion_buttons:
-            btn.destroy()
-        self._suggestion_buttons.clear()
-
-        if not text:
-            return
-
-        projects = get_projects()
-        matches = [p for p in projects if text in p.lower()][:5]
-        if not matches:
-            return
-
-        self._listbox_frame.pack(pady=(0, 5), fill="x")
-        for name in matches:
-            btn = ctk.CTkButton(
-                self._listbox_frame, text=name, anchor="w",
-                fg_color="transparent", hover_color=HOVER,
-                text_color=TEXT, height=28,
-                command=lambda n=name: self._select_project(n),
-            )
-            btn.pack(fill="x", padx=4, pady=1)
-            self._suggestion_buttons.append(btn)
-
-    def _select_project(self, name: str):
-        """Выбирает проект из подсказок."""
-        self._entry_project.delete(0, "end")
-        self._entry_project.insert(0, name)
-        self._listbox_frame.pack_forget()
-        for btn in self._suggestion_buttons:
-            btn.destroy()
-        self._suggestion_buttons.clear()
-
     # --- Действия ---
 
     def _start_work(self):
         """Начинает рабочую сессию."""
-        name = self._entry_project.get().strip()
-        if not name:
-            self._entry_project.configure(border_color=RED)
-            self.after(1500, lambda: self._entry_project.configure(border_color=BORDER))
+        project_name = self._project_var.get()
+        stage_name = self._stage_var.get()
+
+        if not project_name or project_name == "➕ Новый проект...":
+            return
+        if not stage_name or stage_name == "➕ Новый этап...":
             return
 
-        session_id = start_session(name)
+        session_id = start_session(project_name, stage_name)
         self.app_state.session_id = session_id
-        self.app_state.project_name = name
+        self.app_state.project_name = project_name
+        self.app_state.stage_name = stage_name
         self.app_state.status = "working"
         self.app_state.work_seconds = 0
         self.app_state.continuous_work_seconds = 0
@@ -361,7 +474,6 @@ class MainWindow(ctk.CTkToplevel):
 
         end_session(self.app_state.session_id, self.app_state.work_seconds, pause_sec, break_sec)
         self.app_state.reset()
-        self._entry_project.delete(0, "end")
         self._render_state()
 
     def _resume_work(self):
