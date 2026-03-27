@@ -4,10 +4,14 @@
 
 import csv
 import os
+import tkinter as tk
+import math
 from datetime import datetime, timedelta
 
 import customtkinter as ctk
-from db import get_stats_range, get_daily_totals, get_projects, get_projects_with_stages_stats
+from db import (get_stats_range, get_daily_totals, get_projects,
+                get_projects_with_stages_stats, delete_project, delete_stage,
+                get_project_id_by_name, get_stage_id)
 
 _ICON_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets", "icon.ico")
 
@@ -18,6 +22,9 @@ TEXT = "#e0e0e0"
 ACCENT = "#3d8ef0"
 MUTED = "#888888"
 HEADER_BG = "#1e1e1e"
+
+PIE_COLORS = ["#2ec4a0", "#3d8ef0", "#e8a838", "#e05545", "#9b59b6", "#1abc9c", "#e67e22"]
+PIE_OTHER = "#555555"
 
 
 def _fmt_hm(seconds: int) -> str:
@@ -292,6 +299,7 @@ class DashboardWindow(ctk.CTkToplevel):
 
             # Bind double-click for expand/collapse
             row_frame.bind("<Double-Button-1>", lambda e, pn=project_name: self._toggle_expand(pn))
+            row_frame.bind("<Button-3>", lambda e, pn=project_name: self._show_project_menu(e, pn))
 
             # Sub-rows for stages if expanded
             if is_expanded:
@@ -317,9 +325,164 @@ class DashboardWindow(ctk.CTkToplevel):
                             font=("Segoe UI", 11), text_color=MUTED, anchor="w",
                         ).pack(side="left", padx=1)
 
+                    stage_frame.bind("<Button-3>", lambda e, pn=project_name, sn=stage.get("stage_name", ""): self._show_stage_menu(e, pn, sn))
+
+                # Pie chart
+                stages_with_time = [s for s in proj.get("stages", []) if s.get("work_seconds", 0) > 0]
+                if stages_with_time:
+                    chart_frame = ctk.CTkFrame(self._rows_container, fg_color="#1e221e")
+                    chart_frame.pack(fill="x", pady=(2, 4))
+
+                    chart_size = 140
+                    canvas = tk.Canvas(chart_frame, width=chart_size + 200, height=chart_size + 20,
+                                       bg="#1e221e", highlightthickness=0)
+                    canvas.pack(padx=40, pady=8)
+
+                    total_time = sum(s["work_seconds"] for s in stages_with_time)
+                    if total_time > 0:
+                        # Sort by work_seconds descending
+                        sorted_stages = sorted(stages_with_time, key=lambda s: s["work_seconds"], reverse=True)
+
+                        # If more than 7 stages, group smallest into "Прочее"
+                        if len(sorted_stages) > 7:
+                            top_stages = sorted_stages[:7]
+                            other_seconds = sum(s["work_seconds"] for s in sorted_stages[7:])
+                            chart_data = [(s["stage_name"], s["work_seconds"]) for s in top_stages]
+                            chart_data.append(("Прочее", other_seconds))
+                        else:
+                            chart_data = [(s["stage_name"], s["work_seconds"]) for s in sorted_stages]
+
+                        # Draw pie
+                        pad = 10
+                        start_angle = 90.0
+                        cx = pad + chart_size // 2
+                        cy = pad + chart_size // 2
+
+                        legend_x = chart_size + 30
+                        legend_y = pad + 5
+
+                        for i, (name, seconds) in enumerate(chart_data):
+                            color = PIE_COLORS[i] if i < len(PIE_COLORS) else PIE_OTHER
+                            extent = (seconds / total_time) * 360.0
+
+                            canvas.create_arc(
+                                pad, pad, pad + chart_size, pad + chart_size,
+                                start=start_angle, extent=-extent,
+                                fill=color, outline="#1e221e", width=1,
+                            )
+                            start_angle -= extent
+
+                            # Legend
+                            pct = int(seconds / total_time * 100)
+                            canvas.create_rectangle(legend_x, legend_y, legend_x + 12, legend_y + 12, fill=color, outline="")
+                            canvas.create_text(legend_x + 18, legend_y + 6, text=f"{name} ({pct}%)",
+                                               fill="#e0e0e0", anchor="w", font=("Segoe UI", 9))
+                            legend_y += 18
+
         self._lbl_totals.configure(
             text=f"Проектов: {len(projects_data)}  |  Рабочих часов: {_fmt_hm(total_work)}  |  Сессий: {total_sessions}"
         )
+
+    def _show_project_menu(self, event, project_name: str):
+        """Контекстное меню для проекта."""
+        menu = tk.Menu(self, tearoff=0, bg="#242424", fg="#e0e0e0",
+                       activebackground="#3d8ef0", activeforeground="#ffffff",
+                       font=("Segoe UI", 11))
+        menu.add_command(label="Удалить проект", command=lambda: self._confirm_delete_project(project_name))
+        menu.tk_popup(event.x_root, event.y_root)
+
+    def _show_stage_menu(self, event, project_name: str, stage_name: str):
+        """Контекстное меню для этапа."""
+        menu = tk.Menu(self, tearoff=0, bg="#242424", fg="#e0e0e0",
+                       activebackground="#3d8ef0", activeforeground="#ffffff",
+                       font=("Segoe UI", 11))
+        menu.add_command(label="Удалить этап", command=lambda: self._confirm_delete_stage(project_name, stage_name))
+        menu.tk_popup(event.x_root, event.y_root)
+
+    def _confirm_delete_project(self, project_name: str):
+        """Диалог подтверждения удаления проекта."""
+        dialog = ctk.CTkToplevel(self)
+        dialog.title("Удаление проекта")
+        dialog.geometry("400x150")
+        dialog.resizable(False, False)
+        dialog.configure(fg_color=BG_MAIN)
+        dialog.attributes("-topmost", True)
+        dialog.grab_set()
+
+        ctk.CTkLabel(
+            dialog,
+            text=f'Удаление проекта "{project_name}"\nповлечёт удаление всех этапов и сессий.\nПродолжить?',
+            font=("Segoe UI", 13), text_color=TEXT,
+            wraplength=360, justify="center",
+        ).pack(pady=(20, 16))
+
+        btn_frame = ctk.CTkFrame(dialog, fg_color="transparent")
+        btn_frame.pack()
+
+        def do_delete():
+            pid = get_project_id_by_name(project_name)
+            if pid is not None:
+                delete_project(pid)
+            self._expanded.discard(project_name)
+            dialog.destroy()
+            self._refresh()
+
+        ctk.CTkButton(
+            btn_frame, text="Удалить", width=120, height=36,
+            fg_color="#e05545", hover_color="#c62828",
+            text_color="#ffffff",
+            command=do_delete,
+        ).pack(side="left", padx=8)
+
+        ctk.CTkButton(
+            btn_frame, text="Отмена", width=120, height=36,
+            fg_color=BG_CARD, hover_color="#333333",
+            text_color=TEXT,
+            command=dialog.destroy,
+        ).pack(side="left", padx=8)
+
+    def _confirm_delete_stage(self, project_name: str, stage_name: str):
+        """Диалог подтверждения удаления этапа."""
+        dialog = ctk.CTkToplevel(self)
+        dialog.title("Удаление этапа")
+        dialog.geometry("380x140")
+        dialog.resizable(False, False)
+        dialog.configure(fg_color=BG_MAIN)
+        dialog.attributes("-topmost", True)
+        dialog.grab_set()
+
+        ctk.CTkLabel(
+            dialog,
+            text=f'Удалить этап "{stage_name}"?',
+            font=("Segoe UI", 13), text_color=TEXT,
+            wraplength=340, justify="center",
+        ).pack(pady=(20, 16))
+
+        btn_frame = ctk.CTkFrame(dialog, fg_color="transparent")
+        btn_frame.pack()
+
+        def do_delete():
+            pid = get_project_id_by_name(project_name)
+            if pid is not None:
+                sid = get_stage_id(pid, stage_name)
+                if sid is not None:
+                    delete_stage(sid)
+            dialog.destroy()
+            self._refresh()
+
+        ctk.CTkButton(
+            btn_frame, text="Удалить", width=120, height=36,
+            fg_color="#e05545", hover_color="#c62828",
+            text_color="#ffffff",
+            command=do_delete,
+        ).pack(side="left", padx=8)
+
+        ctk.CTkButton(
+            btn_frame, text="Отмена", width=120, height=36,
+            fg_color=BG_CARD, hover_color="#333333",
+            text_color=TEXT,
+            command=dialog.destroy,
+        ).pack(side="left", padx=8)
 
     def _export_csv(self):
         """Экспорт в CSV в папку Downloads."""
