@@ -4,6 +4,7 @@
 
 import csv
 import os
+import random
 import tkinter as tk
 import math
 from datetime import datetime, timedelta
@@ -11,7 +12,7 @@ from datetime import datetime, timedelta
 import customtkinter as ctk
 from db import (get_stats_range, get_daily_totals, get_projects,
                 get_projects_with_stages_stats, delete_project, delete_stage,
-                get_project_id_by_name, get_stage_id)
+                get_project_id_by_name, get_stage_id, get_daily_history)
 
 _ICON_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets", "icon.ico")
 
@@ -34,6 +35,13 @@ def _fmt_hm(seconds: int) -> str:
     if h > 0:
         return f"{h}ч {m}м"
     return f"{m}м"
+
+
+def _cap_seconds(seconds: int) -> int:
+    """Если больше 13ч — возвращает случайное значение 12ч–13.5ч."""
+    if seconds > 13 * 3600:
+        return random.randint(12 * 3600, 13 * 3600 + 1800)
+    return seconds
 
 
 class DashboardWindow(ctk.CTkToplevel):
@@ -140,33 +148,78 @@ class DashboardWindow(ctk.CTkToplevel):
             command=self._export_csv,
         ).pack(side="left", padx=4)
 
-        # Таблица
-        self._table_frame = ctk.CTkScrollableFrame(
+        # Вкладки
+        tabs_frame = ctk.CTkFrame(self, fg_color="transparent")
+        tabs_frame.pack(fill="x", padx=15, pady=(2, 0))
+
+        self._active_tab = "projects"
+        self._tab_buttons = {}
+        for tab_name, tab_label in [("projects", "Проекты"), ("history", "История"), ("chart", "График")]:
+            is_active = tab_name == "projects"
+            btn = ctk.CTkButton(
+                tabs_frame, text=tab_label, width=100, height=28,
+                font=("Segoe UI", 11, "bold") if is_active else ("Segoe UI", 11),
+                fg_color=ACCENT if is_active else BG_CARD,
+                hover_color="#2d6ed0" if is_active else "#333333",
+                text_color="#ffffff" if is_active else MUTED,
+                corner_radius=6,
+                command=lambda t=tab_name: self._switch_tab(t),
+            )
+            btn.pack(side="left", padx=(0, 4))
+            self._tab_buttons[tab_name] = btn
+
+        # === Вкладка "Проекты" ===
+        self._projects_tab = ctk.CTkScrollableFrame(
             self, fg_color=BG_MAIN, corner_radius=0,
         )
-        self._table_frame.pack(fill="both", expand=True, padx=15, pady=6)
 
-        # Заголовок таблицы
+        proj_header = ctk.CTkFrame(self._projects_tab, fg_color=HEADER_BG, height=30)
+        proj_header.pack(fill="x", pady=(0, 2))
+        proj_header.pack_propagate(False)
+
+        ctk.CTkLabel(proj_header, text="", width=30).pack(side="left", padx=1)
+
         self._columns = ["Проект", "Работа", "Паузы", "Перекуры", "Сессий"]
         col_widths = [160, 75, 65, 65, 50]
-
-        header_row = ctk.CTkFrame(self._table_frame, fg_color=HEADER_BG, height=30)
-        header_row.pack(fill="x", pady=(0, 2))
-        header_row.pack_propagate(False)
-
-        # Spacer for expand button
-        ctk.CTkLabel(header_row, text="", width=30).pack(side="left", padx=1)
-
         for i, col_name in enumerate(self._columns):
             ctk.CTkLabel(
-                header_row, text=col_name, width=col_widths[i], height=28,
+                proj_header, text=col_name, width=col_widths[i], height=28,
                 fg_color="transparent",
                 text_color=MUTED, font=("Segoe UI", 11, "bold"),
                 anchor="w",
             ).pack(side="left", padx=1)
 
-        self._rows_container = ctk.CTkFrame(self._table_frame, fg_color="transparent")
+        self._rows_container = ctk.CTkFrame(self._projects_tab, fg_color="transparent")
         self._rows_container.pack(fill="both", expand=True)
+
+        # === Вкладка "История" ===
+        self._history_tab = ctk.CTkScrollableFrame(
+            self, fg_color=BG_MAIN, corner_radius=0,
+        )
+
+        hist_header = ctk.CTkFrame(self._history_tab, fg_color=HEADER_BG, height=30)
+        hist_header.pack(fill="x", pady=(0, 2))
+        hist_header.pack_propagate(False)
+
+        hist_columns = ["Дата", "Начало", "Конец", "Работа", "Паузы", "Сессий", "Топ-проект", "Топ-этап"]
+        hist_widths = [80, 50, 50, 60, 55, 48, 130, 130]
+        for i, col_name in enumerate(hist_columns):
+            ctk.CTkLabel(
+                hist_header, text=col_name, width=hist_widths[i], height=28,
+                fg_color="transparent",
+                text_color=MUTED, font=("Segoe UI", 11, "bold"),
+                anchor="w",
+            ).pack(side="left", padx=1)
+
+        self._history_rows = ctk.CTkFrame(self._history_tab, fg_color="transparent")
+        self._history_rows.pack(fill="both", expand=True)
+
+        # === Вкладка "График" ===
+        self._chart_tab = ctk.CTkFrame(self, fg_color=BG_MAIN, corner_radius=0)
+        self._chart_canvas = None
+
+        # По умолчанию показываем вкладку "Проекты"
+        self._projects_tab.pack(fill="both", expand=True, padx=15, pady=6)
 
         # Нижняя строка итогов
         self._lbl_totals = ctk.CTkLabel(
@@ -227,10 +280,218 @@ class DashboardWindow(ctk.CTkToplevel):
         self._project_menu.configure(values=project_list)
         self._update_summary_cards()
         self._render_table()
+        self._render_history()
+        if self._active_tab == "chart":
+            self._render_chart()
 
     def _refresh(self):
         """Пересчитывает даты из текущего периода и обновляет всё."""
         self._apply_period(self._period_var.get())
+
+    def _switch_tab(self, tab: str):
+        """Переключает вкладку."""
+        self._active_tab = tab
+        tabs = {
+            "projects": self._projects_tab,
+            "history": self._history_tab,
+            "chart": self._chart_tab,
+        }
+        for name, frame in tabs.items():
+            frame.pack_forget()
+            btn = self._tab_buttons[name]
+            if name == tab:
+                frame.pack(fill="both", expand=True, padx=15, pady=6,
+                           before=self._lbl_totals)
+                btn.configure(fg_color=ACCENT, text_color="#ffffff",
+                              font=("Segoe UI", 11, "bold"))
+            else:
+                btn.configure(fg_color=BG_CARD, text_color=MUTED,
+                              font=("Segoe UI", 11))
+
+        if tab == "chart":
+            self._render_chart()
+
+    def _render_history(self):
+        """Перерисовывает таблицу истории по дням."""
+        for w in self._history_rows.winfo_children():
+            w.destroy()
+
+        d_from = self._date_from_var.get()
+        d_to = self._date_to_var.get()
+        days = get_daily_history(d_from, d_to)
+
+        hist_widths = [80, 50, 50, 60, 55, 48, 130, 130]
+
+        for idx, day in enumerate(days):
+            bg = BG_ROW_ALT if idx % 2 == 0 else BG_MAIN
+            row = ctk.CTkFrame(self._history_rows, fg_color=bg, height=28)
+            row.pack(fill="x", pady=0)
+            row.pack_propagate(False)
+
+            capped = _cap_seconds(day["work_seconds"])
+
+            values = [
+                day["day"][5:],  # MM-DD
+                day["first_start"],
+                day["last_end"],
+                _fmt_hm(capped),
+                _fmt_hm(day["pause_seconds"]),
+                str(day["session_count"]),
+                day["top_project"],
+                day["top_stage"],
+            ]
+
+            for i, val in enumerate(values):
+                ctk.CTkLabel(
+                    row, text=val, width=hist_widths[i],
+                    font=("Segoe UI", 11), text_color=TEXT, anchor="w",
+                ).pack(side="left", padx=1)
+
+
+    def _render_chart(self):
+        """Рисует барчарт последних 30 дней на вкладке графика."""
+        for w in self._chart_tab.winfo_children():
+            w.destroy()
+
+        now = datetime.now()
+        d_from = (now - timedelta(days=30)).strftime("%Y-%m-%d")
+        d_to = now.strftime("%Y-%m-%d")
+        days_data = get_daily_history(d_from, d_to)
+
+        day_map = {d["day"]: _cap_seconds(d["work_seconds"]) for d in days_data}
+        all_days = []
+        for i in range(30, -1, -1):
+            date = (now - timedelta(days=i)).strftime("%Y-%m-%d")
+            all_days.append((date, day_map.get(date, 0)))
+
+        # Размеры
+        chart_w = 740
+        chart_h = 180
+        pad_left = 50
+        pad_top = 15
+
+        canvas = tk.Canvas(self._chart_tab, width=chart_w, height=chart_h + pad_top + 5,
+                           bg="#0d0f0d", highlightthickness=0)
+        canvas.pack(fill="x", padx=15, pady=(10, 0))
+
+        max_sec = max((s for _, s in all_days), default=1) or 1
+        bar_w = (chart_w - pad_left - 10) / len(all_days)
+        draw_h = chart_h - pad_top
+
+        # Горизонтальные линии
+        max_hours = int(max_sec / 3600) + 1
+        step = 2 if max_hours > 8 else 1
+        for hours in range(0, max_hours + 1, step):
+            y = pad_top + draw_h - (hours * 3600 / max_sec) * draw_h
+            if y < pad_top:
+                continue
+            canvas.create_line(pad_left, y, chart_w - 5, y, fill="#1c201c", width=1)
+            canvas.create_text(pad_left - 8, y, text=f"{hours}ч",
+                               fill="#666666", anchor="e", font=("Segoe UI", 9))
+
+        # Цвета по часам
+        COLOR_LOW = "#c45c5c"       # < 6ч — мягкий красный
+        COLOR_LOW_TOP = "#d47070"
+        COLOR_MID = "#a8b84c"       # 6–10ч — жёлто-зелёный
+        COLOR_MID_TOP = "#bcc860"
+        COLOR_HIGH = "#4caf6a"      # > 10ч — мягкий зелёный
+        COLOR_HIGH_TOP = "#60c07e"
+
+        # Бары
+        bar_rects = []  # (rect_id, date, sec) для тултипов
+        for i, (date, sec) in enumerate(all_days):
+            bar_h = (sec / max_sec) * draw_h if sec > 0 else 0
+            x1 = pad_left + i * bar_w + 2
+            x2 = x1 + bar_w - 4
+            y2 = pad_top + draw_h
+            y1 = y2 - bar_h
+
+            if sec == 0:
+                canvas.create_rectangle(x1, y2 - 2, x2, y2, fill="#1c1c1c", outline="")
+            else:
+                hours = sec / 3600
+                if hours < 6:
+                    color, color_top = COLOR_LOW, COLOR_LOW_TOP
+                elif hours <= 10:
+                    color, color_top = COLOR_MID, COLOR_MID_TOP
+                else:
+                    color, color_top = COLOR_HIGH, COLOR_HIGH_TOP
+
+                rect = canvas.create_rectangle(x1, y1, x2, y2, fill=color, outline="")
+                if bar_h > 6:
+                    canvas.create_rectangle(x1, y1, x2, y1 + 3, fill=color_top, outline="")
+                bar_rects.append((rect, x1, x2, date, sec))
+
+        # Тултип
+        tooltip = canvas.create_text(0, 0, text="", fill="#ffffff",
+                                     font=("Segoe UI", 10, "bold"), anchor="s")
+        tooltip_bg = canvas.create_rectangle(0, 0, 0, 0, fill="#1a1a1a", outline="#333333")
+        canvas.itemconfigure(tooltip, state="hidden")
+        canvas.itemconfigure(tooltip_bg, state="hidden")
+
+        def on_motion(event):
+            for rect, bx1, bx2, date, sec in bar_rects:
+                if bx1 <= event.x <= bx2:
+                    h, rem = divmod(sec, 3600)
+                    m = rem // 60
+                    text = f"{date[5:]}  {h}ч {m}м"
+                    tx = (bx1 + bx2) / 2
+                    bbox = canvas.bbox(rect)
+                    ty = bbox[1] - 8 if bbox else event.y - 10
+                    if ty < 18:
+                        ty = 18
+                    canvas.coords(tooltip, tx, ty)
+                    canvas.itemconfigure(tooltip, text=text, state="normal")
+                    tb = canvas.bbox(tooltip)
+                    if tb:
+                        # Не даём вылезти за правый край
+                        tw = tb[2] - tb[0]
+                        if tb[2] + 4 > chart_w:
+                            tx = chart_w - tw / 2 - 6
+                            canvas.coords(tooltip, tx, ty)
+                            tb = canvas.bbox(tooltip)
+                        # Не даём вылезти за левый край
+                        if tb and tb[0] - 4 < 0:
+                            tx = tw / 2 + 6
+                            canvas.coords(tooltip, tx, ty)
+                            tb = canvas.bbox(tooltip)
+                        if tb:
+                            canvas.coords(tooltip_bg, tb[0] - 4, tb[1] - 2, tb[2] + 4, tb[3] + 2)
+                        canvas.itemconfigure(tooltip_bg, state="normal")
+                    canvas.tag_raise(tooltip_bg)
+                    canvas.tag_raise(tooltip)
+                    return
+            canvas.itemconfigure(tooltip, state="hidden")
+            canvas.itemconfigure(tooltip_bg, state="hidden")
+
+        def on_leave(event):
+            canvas.itemconfigure(tooltip, state="hidden")
+            canvas.itemconfigure(tooltip_bg, state="hidden")
+
+        canvas.bind("<Motion>", on_motion)
+        canvas.bind("<Leave>", on_leave)
+
+        # Базовая линия
+        canvas.create_line(pad_left, pad_top + draw_h, chart_w - 5, pad_top + draw_h,
+                           fill="#2a2e2a", width=1)
+
+        # Подписи дат — отдельный canvas
+        dates_canvas = tk.Canvas(self._chart_tab, width=chart_w, height=28,
+                                 bg="#0d0f0d", highlightthickness=0)
+        dates_canvas.pack(fill="x", padx=15, pady=(0, 10))
+
+        months = {"01": "янв", "02": "фев", "03": "мар", "04": "апр",
+                  "05": "май", "06": "июн", "07": "июл", "08": "авг",
+                  "09": "сен", "10": "окт", "11": "ноя", "12": "дек"}
+
+        for i, (date, _) in enumerate(all_days):
+            x = pad_left + i * bar_w + bar_w / 2
+            day = date[8:]
+            mon = months.get(date[5:7], "")
+            dates_canvas.create_text(x, 7, text=day,
+                                     fill="#8a8e8a", font=("Segoe UI", 7))
+            dates_canvas.create_text(x, 19, text=mon,
+                                     fill="#666666", font=("Segoe UI", 6))
 
     def _toggle_expand(self, project_name: str):
         if not hasattr(self, "_expanded"):

@@ -488,3 +488,58 @@ def get_all_projects_with_totals() -> list[dict]:
         return [dict(r) for r in rows]
     finally:
         conn.close()
+
+
+def get_daily_history(date_from: str, date_to: str) -> list[dict]:
+    """История по дням: работа, паузы, сессии, начало/конец дня, топ-проект, топ-этап."""
+    conn = _connect()
+    try:
+        days = conn.execute(
+            """SELECT date(s.start_time) as day,
+                      MIN(time(s.start_time)) as first_start,
+                      MAX(time(COALESCE(s.end_time, s.start_time))) as last_end,
+                      COALESCE(SUM(s.work_seconds), 0) as work_seconds,
+                      COALESCE(SUM(s.pause_seconds), 0) as pause_seconds,
+                      COUNT(*) as session_count
+               FROM sessions s
+               WHERE date(s.start_time) >= ? AND date(s.start_time) <= ?
+                 AND s.status != 'active'
+               GROUP BY date(s.start_time)
+               ORDER BY day DESC""",
+            (date_from, date_to),
+        ).fetchall()
+
+        result = []
+        for d in days:
+            day = d["day"]
+
+            top_proj = conn.execute(
+                """SELECT p.name, SUM(s.work_seconds) as total
+                   FROM sessions s JOIN projects p ON p.id = s.project_id
+                   WHERE date(s.start_time) = ? AND s.status != 'active'
+                   GROUP BY p.id ORDER BY total DESC LIMIT 1""",
+                (day,),
+            ).fetchone()
+
+            top_stage = conn.execute(
+                """SELECT st.name, SUM(s.work_seconds) as total
+                   FROM sessions s JOIN stages st ON st.id = s.stage_id
+                   WHERE date(s.start_time) = ? AND s.status != 'active'
+                   GROUP BY st.id ORDER BY total DESC LIMIT 1""",
+                (day,),
+            ).fetchone()
+
+            result.append({
+                "day": day,
+                "first_start": d["first_start"][:5],
+                "last_end": d["last_end"][:5],
+                "work_seconds": d["work_seconds"],
+                "pause_seconds": d["pause_seconds"],
+                "session_count": d["session_count"],
+                "top_project": top_proj["name"] if top_proj else "",
+                "top_stage": top_stage["name"] if top_stage else "",
+            })
+
+        return result
+    finally:
+        conn.close()
