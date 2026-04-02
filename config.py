@@ -17,6 +17,7 @@ _DEFAULTS = {
     "break_duration_min": 10,
     "autostart": False,
     "theme": "dark",
+    "turbo_mode": False,
 }
 
 

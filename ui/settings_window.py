@@ -204,6 +204,16 @@ class SettingsWindow(ctk.CTkToplevel):
             self._autostart.select()
         self._autostart.pack(side="right")
 
+        # ---
+        self._turbo = ctk.CTkSwitch(
+            self, text="", width=36,
+            fg_color="#1c1c1c", progress_color="#2a2e2a",
+            button_color="#555555", button_hover_color="#666666",
+        )
+        if config.get("turbo_mode"):
+            self._turbo.select()
+        self._turbo.pack(anchor="e", padx=20, pady=(0, 4))
+
         # Кнопка сохранить
         ctk.CTkButton(
             self, text="СОХРАНИТЬ", width=310, height=42,
@@ -242,6 +252,8 @@ class SettingsWindow(ctk.CTkToplevel):
         success = _set_autostart(autostart)
         if success:
             config.set("autostart", autostart)
+
+        config.set("turbo_mode", bool(self._turbo.get()))
 
         config.save_all()
         self.destroy()

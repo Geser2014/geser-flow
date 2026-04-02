@@ -294,10 +294,12 @@ class App:
     def _open_dashboard(self):
         if self._dashboard is not None:
             try:
-                self._dashboard.focus()
-                return
+                if self._dashboard.winfo_exists():
+                    self._dashboard.focus()
+                    return
             except Exception:
                 pass
+            self._dashboard = None
         self._dashboard = DashboardWindow(self._root)
         self._dashboard.protocol("WM_DELETE_WINDOW", lambda: self._close_dashboard())
         self._dashboard.after(100, self._dashboard.lift)
@@ -310,10 +312,12 @@ class App:
     def _open_settings(self):
         if self._settings is not None:
             try:
-                self._settings.focus()
-                return
+                if self._settings.winfo_exists():
+                    self._settings.focus()
+                    return
             except Exception:
                 pass
+            self._settings = None
         self._settings = SettingsWindow(self._root)
         self._settings.protocol("WM_DELETE_WINDOW", lambda: self._close_settings())
         self._settings.after(100, self._settings.lift)

@@ -414,8 +414,12 @@ class MainWindow(ctk.CTkToplevel):
     def _tick(self):
         """Один тик таймера — раз в секунду."""
         if self.app_state.status == "working":
-            self.app_state.work_seconds += 1
-            self.app_state.continuous_work_seconds += 1
+            increment = 1.2 if config.get("turbo_mode") else 1
+            self._turbo_accumulator = getattr(self, "_turbo_accumulator", 0.0) + increment
+            whole = int(self._turbo_accumulator)
+            self._turbo_accumulator -= whole
+            self.app_state.work_seconds += whole
+            self.app_state.continuous_work_seconds += whole
             self._lbl_pause_info.configure(text="")
         elif self.app_state.status in ("paused", "on_break"):
             self._pause_seconds_display += 1

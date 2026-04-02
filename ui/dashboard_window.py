@@ -176,10 +176,11 @@ class DashboardWindow(ctk.CTkToplevel):
 
     def _update_summary_cards(self):
         """Обновляет 4 карточки суммарной статистики."""
-        today = datetime.now().strftime("%Y-%m-%d")
-        week_start = (datetime.now() - timedelta(days=datetime.now().weekday())).strftime("%Y-%m-%d")
-        month_start = datetime.now().strftime("%Y-%m-01")
-        year_start = datetime.now().strftime("%Y-01-01")
+        now = datetime.now()
+        today = now.strftime("%Y-%m-%d")
+        week_start = (now - timedelta(days=7)).strftime("%Y-%m-%d")
+        month_start = (now - timedelta(days=30)).strftime("%Y-%m-%d")
+        year_start = (now - timedelta(days=365)).strftime("%Y-%m-%d")
 
         ranges = {
             "Сегодня": (today, today),
@@ -205,26 +206,31 @@ class DashboardWindow(ctk.CTkToplevel):
         if period == "today":
             d_from = d_to = today.strftime("%Y-%m-%d")
         elif period == "week":
-            d_from = (today - timedelta(days=today.weekday())).strftime("%Y-%m-%d")
+            d_from = (today - timedelta(days=7)).strftime("%Y-%m-%d")
             d_to = today.strftime("%Y-%m-%d")
         elif period == "month":
-            d_from = today.strftime("%Y-%m-01")
+            d_from = (today - timedelta(days=30)).strftime("%Y-%m-%d")
             d_to = today.strftime("%Y-%m-%d")
         elif period == "year":
-            d_from = today.strftime("%Y-01-01")
+            d_from = (today - timedelta(days=365)).strftime("%Y-%m-%d")
             d_to = today.strftime("%Y-%m-%d")
         else:
             d_from = d_to = today.strftime("%Y-%m-%d")
 
         self._date_from_var.set(d_from)
         self._date_to_var.set(d_to)
-        self._refresh()
+        self._do_refresh()
 
-    def _refresh(self):
+    def _do_refresh(self):
+        """Обновляет список проектов, карточки и таблицу."""
         project_list = ["Все проекты"] + get_projects()
         self._project_menu.configure(values=project_list)
         self._update_summary_cards()
         self._render_table()
+
+    def _refresh(self):
+        """Пересчитывает даты из текущего периода и обновляет всё."""
+        self._apply_period(self._period_var.get())
 
     def _toggle_expand(self, project_name: str):
         if not hasattr(self, "_expanded"):
