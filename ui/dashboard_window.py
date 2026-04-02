@@ -60,7 +60,7 @@ class DashboardWindow(ctk.CTkToplevel):
         self._expanded: set[str] = set()
 
         self._build_ui()
-        self._apply_period("today")
+        self._apply_period("month")
 
     # --- Построение интерфейса ---
 
@@ -88,7 +88,7 @@ class DashboardWindow(ctk.CTkToplevel):
             side="left", padx=(10, 4)
         )
 
-        self._period_var = ctk.StringVar(value="today")
+        self._period_var = ctk.StringVar(value="month")
         periods = [("Сегодня", "today"), ("Неделя", "week"), ("Месяц", "month"),
                     ("Год", "year"), ("Произвольный", "custom")]
         for label, val in periods:
@@ -201,8 +201,8 @@ class DashboardWindow(ctk.CTkToplevel):
         hist_header.pack(fill="x", pady=(0, 2))
         hist_header.pack_propagate(False)
 
-        hist_columns = ["Дата", "Начало", "Конец", "Работа", "Паузы", "Сессий", "Топ-проект", "Топ-этап"]
-        hist_widths = [80, 50, 50, 60, 55, 48, 130, 130]
+        hist_columns = ["Дата", "Работа", "Начало", "Конец", "Паузы", "Сессий", "Топ-проект", "Топ-этап"]
+        hist_widths = [130, 60, 50, 50, 55, 48, 120, 120]
         for i, col_name in enumerate(hist_columns):
             ctk.CTkLabel(
                 hist_header, text=col_name, width=hist_widths[i], height=28,
@@ -320,7 +320,11 @@ class DashboardWindow(ctk.CTkToplevel):
         d_to = self._date_to_var.get()
         days = get_daily_history(d_from, d_to)
 
-        hist_widths = [80, 50, 50, 60, 55, 48, 130, 130]
+        _MONTHS = {"01": "января", "02": "февраля", "03": "марта", "04": "апреля",
+                   "05": "мая", "06": "июня", "07": "июля", "08": "августа",
+                   "09": "сентября", "10": "октября", "11": "ноября", "12": "декабря"}
+
+        hist_widths = [130, 60, 50, 50, 55, 48, 120, 120]
 
         for idx, day in enumerate(days):
             bg = BG_ROW_ALT if idx % 2 == 0 else BG_MAIN
@@ -330,11 +334,15 @@ class DashboardWindow(ctk.CTkToplevel):
 
             capped = _cap_seconds(day["work_seconds"])
 
+            # "02 апреля 2026"
+            parts = day["day"].split("-")
+            date_label = f"{parts[2]} {_MONTHS.get(parts[1], parts[1])} {parts[0]}"
+
             values = [
-                day["day"][5:],  # MM-DD
+                date_label,
+                _fmt_hm(capped),
                 day["first_start"],
                 day["last_end"],
-                _fmt_hm(capped),
                 _fmt_hm(day["pause_seconds"]),
                 str(day["session_count"]),
                 day["top_project"],
